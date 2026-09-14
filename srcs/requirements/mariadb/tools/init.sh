@@ -4,9 +4,11 @@ set -e
 DB_PASSWORD="$(cat /run/secrets/db_password)"
 DB_ROOT_PASSWORD="$(cat /run/secrets/db_root_password)"
 
-if [ ! -d "/var/lib/mysql/mysql" ]; then
-    mariadb-install-db --user=mysql --datadir=/var/lib/mysql > /dev/null
+if [ -d "/var/lib/mysql/mysql" ]; then
+    exec mysqld --user=mysql --bind-address=0.0.0.0 --console
 fi
+
+mariadb-install-db --user=mysql --datadir=/var/lib/mysql > /dev/null
 
 mysqld --user=mysql --datadir=/var/lib/mysql --skip-networking=0 &
 pid=$!
@@ -33,7 +35,9 @@ $mysql_cmd -e "GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'%';"
 $mysql_cmd -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASSWORD';"
 $mysql_cmd -e "FLUSH PRIVILEGES;"
 
-mysqladmin --protocol=socket -u root -p"$DB_ROOT_PASSWORD" shutdown || kill "$pid"
+if ! mysqladmin --protocol=socket -u root -p"$DB_ROOT_PASSWORD" shutdown; then
+    kill "$pid"
+fi
 wait "$pid" 2>/dev/null || true
 
 exec mysqld --user=mysql --bind-address=0.0.0.0 --console
